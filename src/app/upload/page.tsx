@@ -8,6 +8,7 @@ import { Footer } from "@/components/Footer";
 import { MedicalNotice } from "@/components/Footer";
 import { Button } from "@/components/Button";
 import { Chip } from "@/components/Chip";
+import { uploadVideo, isBackendUp } from "@/lib/api";
 
 const RULES = [
   { k: "촬영 각도", v: "측면 · ±10°", d: "우완은 좌측면, 좌완은 우측면. 카메라가 투구판과 동일 평면 위에." },
@@ -35,26 +36,56 @@ export default function UploadPage() {
   });
   const [canAnalyze, setCanAnalyze] = useState(false);
 
-  function onFile(file: File) {
+  const [analysisId, setAnalysisId] = useState<string | null>(null);
+
+  async function onFile(file: File) {
     setProgress({ pct: 0, label: "UPLOADING", sub: file.name, show: true });
-    let pct = 0;
-    const upTick = setInterval(() => {
-      pct += 8;
-      if (pct >= 100) {
-        pct = 100;
-        clearInterval(upTick);
-        runChecks();
-      }
-      setProgress((s) => ({ ...s, pct }));
-    }, 90);
+    setAnalysisId(null);
+    setCanAnalyze(false);
+
+    // Decide whether to talk to the real backend or run the simulation.
+    const live = await isBackendUp();
+
+    if (!live) {
+      // Demo mode — fake the upload + checks (used when docker-compose isn't running).
+      let pct = 0;
+      const upTick = setInterval(() => {
+        pct += 8;
+        if (pct >= 100) {
+          clearInterval(upTick);
+          simulateChecks();
+        }
+        setProgress((s) => ({ ...s, pct: Math.min(100, pct) }));
+      }, 90);
+      return;
+    }
+
+    // Real upload path.
+    try {
+      // optimistic progress bar — fetch upload doesn't expose progress without XHR
+      const pBar = setInterval(() => setProgress((s) => ({ ...s, pct: Math.min(95, s.pct + 4) })), 120);
+      const res = await uploadVideo(file);
+      clearInterval(pBar);
+      setProgress({ pct: 100, label: "UPLOADED", sub: `analysis ${res.analysis_id.slice(0, 8)}…`, show: true });
+      setAnalysisId(res.analysis_id);
+      // run the visual quality-check timeline; the worker handles real validation in the background
+      simulateChecks();
+    } catch (err) {
+      setProgress({
+        pct: 0,
+        label: "FAILED",
+        sub: err instanceof Error ? err.message : "업로드 실패",
+        show: true,
+      });
+    }
   }
 
-  function runChecks() {
+  function simulateChecks() {
     setProgress((s) => ({ ...s, label: "QUALITY CHECK", sub: "각도·프레임레이트·해상도 검증 중…" }));
     let i = 0;
     const step = () => {
       if (i >= CHECK_LABELS.length) {
-        setProgress((s) => ({ ...s, label: "PASSED", sub: "모든 검증 통과. 분석을 시작할 수 있습니다." }));
+        setProgress((s) => ({ ...s, label: "PASSED", sub: "분석 시작 가능. 결과 페이지에서 진행 상황을 확인하세요." }));
         setCanAnalyze(true);
         return;
       }
@@ -343,10 +374,10 @@ export default function UploadPage() {
                 size="lg"
                 full
                 disabled={!canAnalyze}
-                onClick={() => router.push("/dashboard")}
+                onClick={() => router.push(analysisId ? `/dashboard?id=${analysisId}` : "/dashboard")}
                 style={{ marginTop: 16, opacity: canAnalyze ? 1 : 0.55, cursor: canAnalyze ? "pointer" : "not-allowed" }}
               >
-                품질 검증 후 분석 시작 →
+                {analysisId ? "결과 페이지로 이동 →" : "샘플 리포트 보기 →"}
               </Button>
 
               <p

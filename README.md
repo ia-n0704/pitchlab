@@ -5,105 +5,133 @@
 
 스마트폰으로 촬영한 단일 카메라 영상만으로 투구 동작의 상체·골반 운동연쇄(Kinetic Chain)를
 정량 분석하고, 어디서 에너지가 새고 있는지를 수치로 보여준 뒤,
-LLM이 개인 맞춤 코멘트와 추천 훈련을 설명해 주는 웹 플랫폼입니다.
+Claude API가 개인 맞춤 코멘트와 추천 훈련을 설명해 주는 풀스택 웹 플랫폼입니다.
 
-## 기술 스택 (현재 구현 범위)
+## 기술 스택
 
 | 계층 | 사용 기술 | 상태 |
 |---|---|---|
-| 프레임워크 | **Next.js 16 (App Router) + TypeScript** | ✅ |
-| 스타일 | **Tailwind CSS v4** (`@theme` 토큰) + 커스텀 CSS 변수 | ✅ |
-| 차트 | **Recharts 3** (히스토리 차트) + 인라인 SVG (스켈레톤·게이지·메트릭) | ✅ |
-| 폰트 | Space Grotesk · Pretendard · JetBrains Mono | ✅ |
-| 백엔드 | FastAPI · Celery · Redis | ❌ mock 데이터 |
-| ML | MediaPipe BlazePose Heavy + MotionBERT 3D | ❌ 정적 키프레임 보간 |
-| LLM | Anthropic Claude API | ❌ 코멘트 하드코딩 |
-| 스토리지 | R2 + Postgres + Redis | ❌ |
+| 프레임워크 | **Next.js 16 App Router + React 19 + TypeScript 5** | ✅ |
+| 스타일 | **Tailwind CSS v4** + 커스텀 디자인 토큰 | ✅ |
+| 차트 | **Recharts 3** (히스토리) + 인라인 SVG (스켈레톤·게이지·메트릭) | ✅ |
+| 백엔드 API | **FastAPI 0.115 + Pydantic 2 + SQLAlchemy 2** | ✅ |
+| 큐 | **Celery 5 + Redis 7** (비동기 분석 워커) | ✅ |
+| 스토리지 | **Postgres 16** + 영상은 **로컬 fs** ↔ **Cloudflare R2** (env로 토글) | ✅ |
+| 포즈 추정 | **MediaPipe BlazePose Heavy (33 keypoints, GHUM 3D)** | ✅ |
+| 3D 리프팅 | MediaPipe **world_landmarks** 사용 (MotionBERT 교체 가능) | ⚠️ 대체 구현 |
+| LLM 코칭 | **Anthropic Claude API** + 키 없을 시 템플릿 폴백 | ✅ |
+| 컨테이너 | **Docker Compose** (db + redis + api + worker) | ✅ |
 
-본 리포지토리는 **프론트엔드 프로토타입**입니다. 백엔드/ML 파이프라인은 기획서 §10 로드맵의 M1~M3 단계에 해당합니다.
-
-## 라우트
-
-| 경로 | 페이지 | 설명 |
-| --- | --- | --- |
-| `/` | 랜딩 | Hero · 8단계 파이프라인 · 비교표 · CTA |
-| `/auth` | 가입/로그인 | 18+ 확인 · 동의 분리 · OAuth 슬롯 · `#login` 해시로 모드 전환 |
-| `/upload` | 업로드 | 5가지 촬영 가이드 · 드롭존 · 품질 검증 시뮬레이션 |
-| `/dashboard` | 분석 리포트 | KineticScore · 상체 5종 + 하체 3종 지표 · 운동연쇄 6분절 흐름 · 애니메이션 스켈레톤 오버레이 · LLM 코멘트 · 추천 드릴 · Recharts 히스토리 |
-
-## 분석 지표 8종
-
-**상체 (5종)** — `STAGE 02-A`
-1. **MER** — 최대 외전각 (NORM 165–185°)
-2. **Elbow Height** — 릴리스 시 견봉 대비 (NORM 0~+5°)
-3. **ER Velocity** — 어깨 외회전 각속도 (NORM 6,500–8,000°/s)
-4. **Trunk Tilt** — 릴리스 시 체간 측방 기울기 (NORM 20–35°)
-5. **Release Consistency** — 5구 표준편차 (NORM ≤ 3 cm)
-
-**하체 / 골반 (3종)** — `STAGE 02-B`
-6. **X-Factor** — 골반-어깨 분리각 (NORM 40–55°)
-7. **Pelvis Velocity** — 골반 회전 각속도 (NORM 500–700°/s)
-8. **Stride Length** — 스트라이드 길이 (NORM 80–95% body height)
-
-## 운동연쇄 에너지 흐름
-
-`STRIDE → PELVIS → TRUNK → SHOULDER → ELBOW → RELEASE` 6분절 전달 효율을 시각화 (`STAGE 03`).
-누적 전달 효율을 프로 표준 코호트 평균과 비교합니다.
-
-## 애니메이션 스켈레톤 오버레이
-
-대시보드의 `STAGE 01`은 4개 키프레임(windup → cocking → release → follow) 사이를
-선형 보간으로 1.8초 주기에 재생합니다 (`AnimatedSkeleton.tsx`).
-라벨(MER · ELBOW · X-FACTOR)이 관절을 따라 움직이며 값도 프레임마다 갱신됩니다.
-스크러버, 재생/일시정지, 속도(0.125×/0.25×/0.5×/1×), 타임라인 클릭 시킹 동작.
-
-## 정책
-
-- **만 18세 이상**만 가입 가능 (데이터·법무 정책)
-- 원본 영상은 **30일 후 자동 삭제**
-- 익명화된 키포인트 좌표만 모델 개선에 활용
-- 의료 진단·치료 도구가 **아님** (모든 결과 화면 하단에 고지 노출)
-
-## 실행
+## 실행 — 한 줄
 
 ```bash
+# (선택) Claude 코멘트를 실제로 사용하려면 .env에 API 키 설정
+cp .env.example .env
+# .env 파일을 열어 ANTHROPIC_API_KEY=sk-ant-... 채우기
+
+# 백엔드 4개 서비스 한 번에
+docker compose up --build
+
+# 다른 터미널에서 프론트
 npm install
-npm run dev      # http://localhost:3000
+npm run dev
 ```
 
-빌드:
+- 프론트: http://localhost:3000
+- API: http://localhost:8000 (Swagger UI: http://localhost:8000/docs)
+- Postgres: localhost:5432 (pitchlab/pitchlab)
+- Redis: localhost:6379
 
-```bash
-npm run build
-npm start
+## 라우트 (Frontend)
+
+| 경로 | 페이지 |
+| --- | --- |
+| `/` | 랜딩 — Hero · 8단계 파이프라인 · 비교표 · CTA |
+| `/auth` | 가입 (18+) / 로그인 · `#login`으로 모드 전환 |
+| `/upload` | 5가지 촬영 가이드 · 드래그·드롭 · 실제 백엔드 업로드 (백엔드 미실행 시 mock) |
+| `/dashboard` | 분석 리포트 · `?id=<uuid>`로 특정 분석 폴링 |
+
+## API (Backend)
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| `GET` | `/health` | 헬스체크 |
+| `POST` | `/auth/signup` | 회원가입 (18+ 확인 + 동의 분리) |
+| `POST` | `/auth/login` | 로그인 (JWT 발급) |
+| `POST` | `/uploads` | 멀티파트 영상 업로드 → Celery 분석 큐 enqueue → `{analysis_id}` 반환 |
+| `GET` | `/analyses` | 최근 분석 목록 |
+| `GET` | `/analyses/{id}` | 분석 상세 (status / metrics / llm_comment) |
+
+## 분석 파이프라인 (Worker)
+
+`backend/app/pipeline/analyze.py` 가 다음 단계를 순차 실행:
+
+1. **품질 검증** (`quality.py`) — fps ≥ 55, 해상도 ≥ 720, frames ≥ 30. 미충족 시 `rejected`.
+2. **2D + 3D 포즈** (`pose.py`) — MediaPipe BlazePose Heavy. 프레임마다 33 keypoint × (image_xy, world_xyz, visibility).
+3. **키프레임 검출** — 던지는 손 손목 속도 피크 = 릴리스 프레임.
+4. **메트릭 계산** (`metrics.py`) — 8개 지표 (실제 벡터 연산):
+   - MER, Elbow Height, ER Velocity, Trunk Tilt, Release Consistency
+   - X-Factor, Pelvis Velocity, Stride Length
+5. **KineticScore** — 8개 지표를 정상범위 대비 z-score → 가중합 (0-100).
+6. **운동연쇄 효율** — 6분절 (STRIDE → PELVIS → TRUNK → SHOULDER → ELBOW → RELEASE) 전달 효율 합성.
+7. **LLM 코멘트** (`llm/coach.py`) — Claude API 호출. metric JSON in, 3~5문장 한국어 out. 의료 용어 후처리 필터.
+
+## 데이터 모델
+
+```
+User           Analysis
+├ id (uuid)    ├ id (uuid)
+├ email        ├ user_id (FK, nullable)
+├ password_hash├ status (queued|processing|completed|failed|rejected)
+├ handedness   ├ storage_key
+├ DOB          ├ original_filename
+├ consent...   ├ video_fps / frames / width / height
+└ created_at   ├ metrics (JSONB)
+               ├ kinetic_score
+               ├ llm_comment
+               ├ error_message
+               ├ created_at
+               └ completed_at
 ```
 
-> **참고**: Turbopack은 현재 경로에 비-ASCII 문자(한글 등)가 포함되면 패닉하는 버그가 있어
-> `--webpack` 플래그로 강제 빌드합니다 (v16.2.6 기준).
+## 정책 (planning §8)
+
+- **만 18세 이상**만 가입 가능. 가입 시 DOB 검증 + 필수 동의 2개 (연령, 영상 처리).
+- 원본 영상은 **30일 후 자동 삭제** (스토리지 retention 정책으로 운영).
+- 익명화된 키포인트 좌표만 모델 개선에 활용 (선택 동의).
+- 의료 진단·치료 도구가 **아님**. LLM 출력에 의료 용어 후처리 필터 적용.
 
 ## 디렉토리 구조
 
 ```
-src/
-├── app/
-│   ├── layout.tsx          # 메타데이터·폰트·전역 레이아웃
-│   ├── page.tsx            # 랜딩
-│   ├── globals.css         # @theme 토큰 + 유틸리티 클래스
-│   ├── auth/page.tsx       # 가입/로그인
-│   ├── upload/page.tsx     # 업로드 + 품질 검증 시뮬레이션
-│   └── dashboard/page.tsx  # 분석 리포트
-├── components/
-│   ├── NavBar.tsx          # 공통 네비
-│   ├── Logo.tsx
-│   ├── Chip.tsx · Button.tsx · SectionHead.tsx
-│   ├── Footer.tsx          # Footer + MedicalNotice
-│   ├── PitcherFigure.tsx   # 정적 SVG (랜딩·auth)
-│   ├── AnimatedSkeleton.tsx # 키프레임 보간 client component
-│   ├── ScoreGauge.tsx
-│   ├── MetricCard.tsx
-│   └── HistoryChart.tsx    # Recharts AreaChart
-└── data/
-    └── metrics.ts          # mock 8 metrics + chain + leaks + drills
+.
+├── docker-compose.yml          # db + redis + api + worker
+├── .env.example
+├── package.json                # Next.js front
+├── src/
+│   ├── app/                    # App Router routes
+│   ├── components/             # 공유 컴포넌트
+│   ├── lib/api.ts              # FastAPI 호출 클라이언트
+│   └── lib/adapt.ts            # 백엔드 응답 → UI 형태 어댑터
+└── backend/
+    ├── Dockerfile
+    ├── requirements.txt
+    └── app/
+        ├── main.py             # FastAPI app
+        ├── config.py           # pydantic-settings
+        ├── worker.py           # Celery app
+        ├── security.py         # JWT + bcrypt
+        ├── api/                # routers (auth, uploads, analyses, health)
+        ├── db/                 # SQLAlchemy session
+        ├── models/             # User, Analysis
+        ├── storage/            # local fs ↔ R2 swap
+        ├── pipeline/
+        │   ├── quality.py      # OpenCV header inspection
+        │   ├── pose.py         # MediaPipe BlazePose Heavy
+        │   ├── metrics.py      # 8 biomech 지표 계산
+        │   └── analyze.py      # full pipeline driver
+        ├── tasks/              # Celery analyze task
+        └── llm/coach.py        # Claude API client + medical filter
 ```
 
 ## 라이선스
