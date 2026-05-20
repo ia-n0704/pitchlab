@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PitchLab — 회원가입 · 로그인</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    body { overflow-x: hidden; }
+    .auth {
+      display: grid;
+      grid-template-columns: 560px 1fr;
+      min-height: 100vh;
+    }
+    .auth-brand {
+      position: relative;
+      padding: 36px 40px;
+      border-right: 1px solid var(--line);
+      background: var(--bg-1);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .auth-brand .top {
+      position: relative;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .auth-brand .figure {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex: 1;
+    }
+    .auth-brand .figure svg { width: min(460px, 92%); height: auto; }
+    .auth-brand .meta-bottom {
+      position: relative;
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--ff-mono);
+      font-size: 10.5px;
+      color: var(--fg-3);
+      letter-spacing: 0.14em;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .auth-form {
+      position: relative;
+      padding: 48px clamp(24px, 6vw, 80px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .auth-form .head-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--ff-mono);
+      font-size: 11px;
+      color: var(--fg-3);
+      letter-spacing: 0.16em;
+      margin-bottom: 36px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .auth-form .head-row a { color: var(--acc); }
+    .auth-form h1 {
+      font-size: clamp(34px, 4.5vw, 44px);
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      margin-bottom: 12px;
+    }
+    .auth-form .lead {
+      color: var(--fg-2);
+      font-size: 14px;
+      margin: 0 0 36px;
+    }
+    .auth-form .lead .acc { color: var(--acc); }
+
+    .field-stack { display: flex; flex-direction: column; gap: 20px; max-width: 460px; }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .dob-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px; align-items: center; }
+    .age-ok {
+      padding: 0 14px; height: 44px;
+      display: flex; align-items: center; gap: 8px;
+      background: var(--acc-soft); border: 1px solid var(--acc);
+      border-radius: var(--r-sm);
+      font-family: var(--ff-mono); font-size: 11px; color: var(--acc); letter-spacing: 0.1em;
+      white-space: nowrap;
+    }
+
+    .hand-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .hand-opt {
+      padding: 12px 16px;
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-sm);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      color: var(--fg-1);
+      font-size: 14px;
+      transition: border-color .15s, background .15s;
+    }
+    .hand-opt input { display: none; }
+    .hand-opt .ind {
+      font-family: var(--ff-mono); font-size: 11px;
+      color: var(--fg-3);
+    }
+    .hand-opt:has(input:checked) {
+      border-color: var(--acc);
+      background: var(--acc-soft);
+      color: var(--fg-0);
+    }
+    .hand-opt:has(input:checked) .ind { color: var(--acc); }
+
+    .consent {
+      margin-top: 8px;
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-sm);
+      overflow: hidden;
+    }
+    .consent-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      cursor: pointer;
+      border-top: 1px solid var(--line);
+    }
+    .consent-row:first-child { border-top: none; }
+    .consent-row input { display: none; }
+    .consent-box {
+      width: 18px; height: 18px; flex-shrink: 0;
+      border: 1.5px solid var(--line-strong);
+      border-radius: 2px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--acc-fg); font-size: 11px; font-weight: 700;
+    }
+    .consent-row input:checked + .consent-box {
+      border-color: var(--acc);
+      background: var(--acc);
+    }
+    .consent-row input:checked + .consent-box::after { content: "✓"; }
+    .consent-tag {
+      font-family: var(--ff-mono); font-size: 10px;
+      padding: 2px 6px; border-radius: 2px;
+      letter-spacing: 0.1em;
+      background: var(--bg-2);
+      color: var(--fg-2);
+    }
+    .consent-tag.req { background: var(--acc-soft); color: var(--acc); }
+    .consent-text { font-size: 13px; color: var(--fg-1); flex: 1; }
+
+    .disclaimer {
+      font-size: 12px;
+      color: var(--fg-3);
+      line-height: 1.55;
+      text-align: center;
+      margin: 0;
+    }
+
+    .or-divider {
+      display: flex; align-items: center; gap: 14px;
+      margin: 12px 0;
+    }
+    .or-divider .line { flex: 1; height: 1px; background: var(--line); }
+    .or-divider .or {
+      font-family: var(--ff-mono); font-size: 10px;
+      color: var(--fg-3); letter-spacing: 0.18em;
+    }
+
+    .oauth {
+      width: 100%;
+      justify-content: flex-start;
+      height: 44px;
+      font-weight: 500;
+      font-family: var(--ff-body);
+      letter-spacing: normal;
+    }
+    .oauth .ico {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--bg-2);
+      border: 1px solid var(--line-2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+      font-family: var(--ff-mono);
+      color: var(--fg-1);
+    }
+
+    /* mode switching via :target — show login when #login, signup default */
+    .auth-mode-login { display: none; }
+    .auth-mode-signup { display: block; }
+    body:target ~ * { } /* placeholder */
+    body.show-login .auth-mode-signup { display: none; }
+    body.show-login .auth-mode-login { display: block; }
+
+    @media (max-width: 900px) {
+      .auth { grid-template-columns: 1fr; }
+      .auth-brand {
+        flex-direction: row;
+        align-items: center;
+        gap: 16px;
+        padding: 20px;
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+      }
+      .auth-brand .figure { display: none; }
+      .auth-brand .meta-bottom { display: none; }
+      .auth-form { padding: 32px 24px; }
+    }
+    @media (max-width: 480px) {
+      .field-row { grid-template-columns: 1fr; }
+      .dob-row { grid-template-columns: 1fr 1fr 1fr; }
+      .age-ok { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="auth">
+
+    <!-- ── Brand panel ── -->
+    <aside class="auth-brand">
+      <div class="grid-fine" style="opacity:0.5;"></div>
+
+      <div class="top">
+        <a href="index.html" class="logo">
+          <svg width="23" height="20" viewBox="0 0 32 28" aria-hidden="true">
+            <path d="M 2 22 Q 14 2, 28 14" fill="none" stroke="var(--acc)" stroke-width="3" stroke-linecap="round"/>
+            <circle cx="28" cy="14" r="3.5" fill="var(--acc)"/>
+            <circle cx="2" cy="22" r="1.6" fill="var(--fg-2)"/>
+          </svg>
+          <span>PitchLab<span class="dot">.</span></span>
+        </a>
+        <span class="chip chip-acc chip-dot">OPEN BETA</span>
+      </div>
+
+      <div class="figure">
+        <!-- release pose -->
+        <svg viewBox="0 0 480 560" aria-label="pitcher at release">
+          <line x1="0" y1="514" x2="480" y2="514" stroke="var(--line-2)" stroke-width="1"/>
+          <circle cx="285" cy="83" r="22" fill="none" stroke="var(--fg-1)" stroke-width="2"/>
+          <line x1="285" y1="145" x2="280" y2="290" stroke="var(--fg-1)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="265" y1="165" x2="305" y2="170" stroke="var(--fg-2)" stroke-width="2" stroke-linecap="round"/>
+          <line x1="265" y1="290" x2="300" y2="290" stroke="var(--fg-2)" stroke-width="2" stroke-linecap="round"/>
+          <!-- throwing arm -->
+          <line x1="265" y1="165" x2="305" y2="135" stroke="var(--acc)" stroke-width="3" stroke-linecap="round"/>
+          <line x1="305" y1="135" x2="365" y2="115" stroke="var(--acc)" stroke-width="3" stroke-linecap="round"/>
+          <!-- glove arm -->
+          <line x1="305" y1="170" x2="270" y2="225" stroke="var(--fg-1)" stroke-width="2" stroke-linecap="round"/>
+          <line x1="270" y1="225" x2="230" y2="270" stroke="var(--fg-1)" stroke-width="2" stroke-linecap="round"/>
+          <!-- legs -->
+          <line x1="265" y1="290" x2="245" y2="395" stroke="var(--fg-1)" stroke-width="2" stroke-linecap="round"/>
+          <line x1="245" y1="395" x2="210" y2="510" stroke="var(--fg-1)" stroke-width="2" stroke-linecap="round"/>
+          <line x1="300" y1="290" x2="345" y2="395" stroke="var(--fg-1)" stroke-width="2" stroke-linecap="round"/>
+          <line x1="345" y1="395" x2="420" y2="500" stroke="var(--fg-1)" stroke-width="2" stroke-linecap="round"/>
+          <!-- joints -->
+          <circle cx="265" cy="165" r="5" fill="var(--acc)" stroke="var(--bg-0)" stroke-width="1.5"/>
+          <circle cx="305" cy="135" r="5" fill="var(--acc)" stroke="var(--bg-0)" stroke-width="1.5"/>
+          <circle cx="365" cy="115" r="5" fill="var(--acc)" stroke="var(--bg-0)" stroke-width="1.5"/>
+          <circle cx="305" cy="170" r="4.5" fill="var(--acc)" stroke="var(--bg-0)" stroke-width="1.5"/>
+          <circle cx="270" cy="225" r="4.5" fill="var(--acc)" stroke="var(--bg-0)" stroke-width="1.5"/>
+          <circle cx="230" cy="270" r="4.5" fill="var(--acc)" stroke="var(--bg-0)" stroke-width="1.5"/>
+
+          <g font-family="var(--ff-mono)" font-size="10" fill="var(--fg-2)">
+            <text x="14" y="22" fill="var(--fg-3)" letter-spacing="0.12em">RELEASE · T = 0.000s</text>
+            <text x="14" y="544" fill="var(--fg-3)" letter-spacing="0.12em">SUBJECT 0142 · KINETICSCORE 78</text>
+            <path d="M 295 165 A 30 30 0 0 0 265 135" fill="none" stroke="var(--acc)" stroke-width="1"/>
+            <text x="305" y="160" fill="var(--acc)" font-weight="600">MER 172°</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="meta-bottom">
+        <span>SUBJECT 0142 · RH</span>
+        <span>KINETICSCORE 78</span>
+        <span>2026.05.19</span>
+      </div>
+    </aside>
+
+    <!-- ── Form panel ── -->
+    <section class="auth-form">
+      <span class="crosshair" style="top:24px; right:24px;"></span>
+
+      <!-- ─ SIGN UP ─ -->
+      <div class="auth-mode-signup" id="signup">
+        <div class="head-row">
+          <span>STEP 02 / 03 · 가입</span>
+          <span>이미 계정이 있나요? <a href="auth.html#login" onclick="document.body.classList.add('show-login')">로그인</a></span>
+        </div>
+
+        <h1>분석실에<br/>오신 것을 환영합니다.</h1>
+        <p class="lead">
+          데이터·법무 정책상 <span class="acc">만 18세 이상</span>만 가입할 수 있습니다.
+          미달 시 가입 자체가 거부됩니다.
+        </p>
+
+        <form class="field-stack" onsubmit="event.preventDefault(); location.href='upload.html';">
+          <div>
+            <label class="label">투구 손</label>
+            <div class="hand-group">
+              <label class="hand-opt">
+                <input type="radio" name="hand" value="rh" checked>
+                <span>우완 RH</span>
+                <span class="ind mono">●</span>
+              </label>
+              <label class="hand-opt">
+                <input type="radio" name="hand" value="lh">
+                <span>좌완 LH</span>
+                <span class="ind mono">○</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div>
+              <label class="label" for="email">이메일</label>
+              <input class="input" id="email" type="email" placeholder="you@example.com" required>
+            </div>
+            <div>
+              <label class="label" for="pw">비밀번호</label>
+              <input class="input" id="pw" type="password" placeholder="8자 이상" minlength="8" required>
+            </div>
+          </div>
+
+          <div>
+            <label class="label">생년월일 — 18세 이상 확인</label>
+            <div class="dob-row">
+              <input class="input" placeholder="YYYY" maxlength="4" inputmode="numeric">
+              <input class="input" placeholder="MM" maxlength="2" inputmode="numeric">
+              <input class="input" placeholder="DD" maxlength="2" inputmode="numeric">
+              <div class="age-ok">
+                <span>✓</span>
+                <span>18세 이상</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="consent">
+            <label class="consent-row">
+              <input type="checkbox" checked required>
+              <span class="consent-box"></span>
+              <span class="consent-tag req">필수</span>
+              <span class="consent-text">만 18세 이상임을 확인합니다.</span>
+            </label>
+            <label class="consent-row">
+              <input type="checkbox" checked required>
+              <span class="consent-box"></span>
+              <span class="consent-tag req">필수</span>
+              <span class="consent-text">분석을 위한 영상 처리 및 30일 자동 삭제에 동의합니다.</span>
+            </label>
+            <label class="consent-row">
+              <input type="checkbox" checked>
+              <span class="consent-box"></span>
+              <span class="consent-tag">선택</span>
+              <span class="consent-text">익명화된 지표 수치를 모델 개선에 활용하는 것에 동의합니다.</span>
+            </label>
+            <label class="consent-row">
+              <input type="checkbox">
+              <span class="consent-box"></span>
+              <span class="consent-tag">선택</span>
+              <span class="consent-text">분석 결과를 외부 공유(임베드 링크 발급)할 수 있도록 합니다.</span>
+            </label>
+          </div>
+
+          <button class="btn btn-primary btn-lg btn-full" type="submit" style="margin-top:8px;">
+            가입 후 촬영 가이드로 이동 →
+          </button>
+
+          <p class="disclaimer">
+            본 서비스는 의료 진단·치료 도구가 아닙니다. 통증·부상 의심 시 전문 의료기관의 진료를 받으세요.
+          </p>
+        </form>
+      </div>
+
+      <!-- ─ LOGIN ─ -->
+      <div class="auth-mode-login" id="login">
+        <div class="head-row">
+          <span>로그인</span>
+          <span style="color:var(--fg-2);">처음이신가요? <a href="auth.html" onclick="document.body.classList.remove('show-login')">가입</a></span>
+        </div>
+
+        <h1>다시 만나서<br/>반갑습니다.</h1>
+        <p class="lead">지난 분석 결과와 새로운 영상이 기다리고 있습니다.</p>
+
+        <form class="field-stack" style="max-width:380px;" onsubmit="event.preventDefault(); location.href='dashboard.html';">
+          <div>
+            <label class="label" for="email-l">이메일</label>
+            <input class="input" id="email-l" type="email" placeholder="you@example.com" required>
+          </div>
+          <div>
+            <label class="label" for="pw-l" style="display:flex; justify-content:space-between;">
+              <span>비밀번호</span>
+              <a href="#" style="color:var(--fg-2); text-transform:none; letter-spacing:normal; font-size:11px;">잊으셨나요?</a>
+            </label>
+            <input class="input" id="pw-l" type="password" placeholder="••••••••" required>
+          </div>
+
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+            <input type="checkbox" checked style="display:none;">
+            <span class="consent-box" style="border-color:var(--acc); background:var(--acc);">✓</span>
+            <span style="font-size:13px; color:var(--fg-1);">로그인 상태 유지</span>
+          </label>
+
+          <button class="btn btn-primary btn-lg btn-full" type="submit" style="margin-top:8px;">
+            로그인 →
+          </button>
+
+          <div class="or-divider">
+            <div class="line"></div>
+            <span class="or">또는</span>
+            <div class="line"></div>
+          </div>
+
+          <button type="button" class="btn btn-ghost oauth">
+            <span class="ico">G</span>
+            <span>Google로 계속</span>
+          </button>
+          <button type="button" class="btn btn-ghost oauth">
+            <span class="ico"></span>
+            <span>Apple로 계속</span>
+          </button>
+          <button type="button" class="btn btn-ghost oauth">
+            <span class="ico">K</span>
+            <span>Kakao로 계속</span>
+          </button>
+
+          <p class="disclaimer">
+            로그인하면 <a href="#" style="color:var(--fg-2);">이용약관</a> 및 <a href="#" style="color:var(--fg-2);">개인정보처리방침</a>에 동의하는 것으로 간주됩니다.
+          </p>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Switch between sign-up and login based on hash
+    function applyHash() {
+      if (location.hash === '#login') {
+        document.body.classList.add('show-login');
+      } else {
+        document.body.classList.remove('show-login');
+      }
+    }
+    window.addEventListener('hashchange', applyHash);
+    applyHash();
+  </script>
+</body>
+</html>
