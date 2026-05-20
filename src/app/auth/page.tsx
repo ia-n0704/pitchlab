@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { Chip } from "@/components/Chip";
 import { Button } from "@/components/Button";
 import { PitcherFigure } from "@/components/PitcherFigure";
-import { useRouter } from "next/navigation";
+import { login, signup } from "@/lib/api";
 
 export default function AuthPage() {
   const [mode, setMode] = useState<"signup" | "login">("signup");
@@ -64,6 +65,44 @@ export default function AuthPage() {
 }
 
 function SignupForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: () => void }) {
+  const [hand, setHand] = useState<"RH" | "LH">("RH");
+  const [consentAge, setConsentAge] = useState(true);
+  const [consentProc, setConsentProc] = useState(true);
+  const [consentAnaly, setConsentAnaly] = useState(true);
+  const [consentShare, setConsentShare] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setErr(null);
+    const fd = new FormData(e.currentTarget);
+    const email = fd.get("email") as string;
+    const password = fd.get("password") as string;
+    const yyyy = fd.get("dob_y") as string;
+    const mm = fd.get("dob_m") as string;
+    const dd = fd.get("dob_d") as string;
+    const dob = `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+
+    setLoading(true);
+    try {
+      await signup({
+        email, password,
+        date_of_birth: dob,
+        handedness: hand,
+        consent_age: consentAge,
+        consent_processing: consentProc,
+        consent_analytics: consentAnaly,
+        consent_share: consentShare,
+      });
+      onSubmit();
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "가입 실패");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div style={{ maxWidth: 460 }}>
       <div
@@ -87,35 +126,45 @@ function SignupForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: ()
         미달 시 가입 자체가 거부됩니다.
       </p>
 
-      <form
-        className="flex flex-col gap-5"
-        onSubmit={(e) => { e.preventDefault(); onSubmit(); }}
-      >
+      {err && (
+        <div
+          className="mono mb-5"
+          style={{
+            fontSize: 11.5, color: "var(--color-danger)", letterSpacing: "0.08em",
+            padding: "10px 14px", border: "1px solid var(--color-danger)",
+            background: "var(--color-bg-1)", borderRadius: "var(--radius-pl-sm)",
+          }}
+        >
+          {err}
+        </div>
+      )}
+
+      <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
         <div>
           <Label>투구 손</Label>
           <div className="grid grid-cols-2 gap-2">
-            <HandOption value="rh" label="우완 RH" defaultChecked />
-            <HandOption value="lh" label="좌완 LH" />
+            <HandOption value="RH" label="우완 RH" checked={hand === "RH"} onChange={() => setHand("RH")} />
+            <HandOption value="LH" label="좌완 LH" checked={hand === "LH"} onChange={() => setHand("LH")} />
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label htmlFor="email">이메일</Label>
-            <Input id="email" type="email" placeholder="you@example.com" required />
+            <Input id="email" name="email" type="email" placeholder="you@example.com" required />
           </div>
           <div>
             <Label htmlFor="pw">비밀번호</Label>
-            <Input id="pw" type="password" placeholder="8자 이상" minLength={8} required />
+            <Input id="pw" name="password" type="password" placeholder="8자 이상" minLength={8} required />
           </div>
         </div>
 
         <div>
           <Label>생년월일 — 18세 이상 확인</Label>
           <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
-            <Input placeholder="YYYY" maxLength={4} inputMode="numeric" />
-            <Input placeholder="MM" maxLength={2} inputMode="numeric" />
-            <Input placeholder="DD" maxLength={2} inputMode="numeric" />
+            <Input name="dob_y" placeholder="YYYY" maxLength={4} inputMode="numeric" required />
+            <Input name="dob_m" placeholder="MM" maxLength={2} inputMode="numeric" required />
+            <Input name="dob_d" placeholder="DD" maxLength={2} inputMode="numeric" required />
             <div
               className="mono"
               style={{
@@ -134,14 +183,14 @@ function SignupForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: ()
         </div>
 
         <div style={{ marginTop: 8, border: "1px solid var(--color-line-2)", borderRadius: "var(--radius-pl-sm)", overflow: "hidden" }}>
-          <ConsentRow type="필수" text="만 18세 이상임을 확인합니다." required defaultChecked />
-          <ConsentRow type="필수" text="분석을 위한 영상 처리 및 30일 자동 삭제에 동의합니다." required defaultChecked />
-          <ConsentRow type="선택" text="익명화된 지표 수치를 모델 개선에 활용하는 것에 동의합니다." defaultChecked />
-          <ConsentRow type="선택" text="분석 결과를 외부 공유(임베드 링크 발급)할 수 있도록 합니다." />
+          <ConsentRow type="필수" text="만 18세 이상임을 확인합니다." required checked={consentAge} onChange={setConsentAge} />
+          <ConsentRow type="필수" text="분석을 위한 영상 처리 및 30일 자동 삭제에 동의합니다." required checked={consentProc} onChange={setConsentProc} />
+          <ConsentRow type="선택" text="익명화된 지표 수치를 모델 개선에 활용하는 것에 동의합니다." checked={consentAnaly} onChange={setConsentAnaly} />
+          <ConsentRow type="선택" text="분석 결과를 외부 공유(임베드 링크 발급)할 수 있도록 합니다." checked={consentShare} onChange={setConsentShare} />
         </div>
 
-        <Button variant="primary" size="lg" full type="submit" style={{ marginTop: 8 }}>
-          가입 후 촬영 가이드로 이동 →
+        <Button variant="primary" size="lg" full type="submit" style={{ marginTop: 8 }} disabled={loading}>
+          {loading ? "가입 중…" : "가입 후 촬영 가이드로 이동 →"}
         </Button>
 
         <p
@@ -158,6 +207,26 @@ function SignupForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: ()
 }
 
 function LoginForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setErr(null);
+    const fd = new FormData(e.currentTarget);
+    const email = fd.get("email") as string;
+    const password = fd.get("password") as string;
+    setLoading(true);
+    try {
+      await login(email, password);
+      onSubmit();
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "로그인 실패");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div style={{ maxWidth: 380 }}>
       <div
@@ -180,13 +249,26 @@ function LoginForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: () 
         지난 분석 결과와 새로운 영상이 기다리고 있습니다.
       </p>
 
+      {err && (
+        <div
+          className="mono mb-5"
+          style={{
+            fontSize: 11.5, color: "var(--color-danger)", letterSpacing: "0.08em",
+            padding: "10px 14px", border: "1px solid var(--color-danger)",
+            background: "var(--color-bg-1)", borderRadius: "var(--radius-pl-sm)",
+          }}
+        >
+          {err}
+        </div>
+      )}
+
       <form
         className="flex flex-col gap-4"
-        onSubmit={(e) => { e.preventDefault(); onSubmit(); }}
+        onSubmit={handleSubmit}
       >
         <div>
           <Label htmlFor="email-l">이메일</Label>
-          <Input id="email-l" type="email" placeholder="you@example.com" required />
+          <Input id="email-l" name="email" type="email" placeholder="you@example.com" required />
         </div>
         <div>
           <Label htmlFor="pw-l">
@@ -197,7 +279,7 @@ function LoginForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: () 
               </a>
             </span>
           </Label>
-          <Input id="pw-l" type="password" placeholder="••••••••" required />
+          <Input id="pw-l" name="password" type="password" placeholder="••••••••" required />
         </div>
 
         <label className="flex items-center gap-2.5 cursor-pointer mt-1">
@@ -215,8 +297,8 @@ function LoginForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: () 
           <span style={{ fontSize: 13, color: "var(--color-fg-1)" }}>로그인 상태 유지</span>
         </label>
 
-        <Button variant="primary" size="lg" full type="submit" style={{ marginTop: 8 }}>
-          로그인 →
+        <Button variant="primary" size="lg" full type="submit" style={{ marginTop: 8 }} disabled={loading}>
+          {loading ? "로그인 중…" : "로그인 →"}
         </Button>
 
         <div className="flex items-center gap-3.5 my-3">
@@ -297,8 +379,7 @@ function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   );
 }
 
-function HandOption({ value, label, defaultChecked }: { value: string; label: string; defaultChecked?: boolean }) {
-  const [checked, setChecked] = useState(!!defaultChecked);
+function HandOption({ value, label, checked, onChange }: { value: string; label: string; checked: boolean; onChange: () => void }) {
   return (
     <label
       className="cursor-pointer flex justify-between items-center"
@@ -311,12 +392,7 @@ function HandOption({ value, label, defaultChecked }: { value: string; label: st
         fontSize: 14,
       }}
     >
-      <input
-        type="radio" name="hand" value={value}
-        checked={checked}
-        onChange={() => setChecked(true)}
-        className="hidden"
-      />
+      <input type="radio" name="hand" value={value} checked={checked} onChange={onChange} className="hidden" />
       <span>{label}</span>
       <span className="mono" style={{ fontSize: 11, color: checked ? "var(--color-acc)" : "var(--color-fg-3)" }}>
         {checked ? "●" : "○"}
@@ -326,11 +402,10 @@ function HandOption({ value, label, defaultChecked }: { value: string; label: st
 }
 
 function ConsentRow({
-  type, text, required, defaultChecked,
+  type, text, required, checked, onChange,
 }: {
-  type: "필수" | "선택"; text: string; required?: boolean; defaultChecked?: boolean;
+  type: "필수" | "선택"; text: string; required?: boolean; checked: boolean; onChange: (v: boolean) => void;
 }) {
-  const [checked, setChecked] = useState(!!defaultChecked);
   return (
     <label
       className="flex items-center gap-3.5 cursor-pointer"
@@ -338,7 +413,7 @@ function ConsentRow({
     >
       <input
         type="checkbox" checked={checked}
-        onChange={(e) => setChecked(e.target.checked)}
+        onChange={(e) => onChange(e.target.checked)}
         required={required}
         className="hidden"
       />

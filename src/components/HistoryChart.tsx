@@ -11,7 +11,9 @@ import {
   YAxis,
 } from "recharts";
 
-const DATA = [
+export type HistoryPoint = { session: string; score: number };
+
+const MOCK_DATA: HistoryPoint[] = [
   { session: "#01", score: 55 },
   { session: "#02", score: 58 },
   { session: "#03", score: 52 },
@@ -28,11 +30,26 @@ const DATA = [
   { session: "#14", score: 78 },
 ];
 
-export function HistoryChart() {
+interface HistoryChartProps {
+  data?: HistoryPoint[];
+}
+
+export function HistoryChart({ data }: HistoryChartProps) {
+  const chartData = data && data.length > 0 ? data : MOCK_DATA;
+  const isReal = !!(data && data.length > 0);
+
   return (
     <div style={{ width: "100%", height: 180 }}>
+      {!isReal && (
+        <div
+          className="mono"
+          style={{ fontSize: 10, color: "var(--color-fg-3)", letterSpacing: "0.12em", marginBottom: 8 }}
+        >
+          DEMO DATA — 로그인 후 실제 분석 이력이 표시됩니다
+        </div>
+      )}
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={DATA} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+        <AreaChart data={chartData} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
           <defs>
             <linearGradient id="histFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="var(--color-acc)" stopOpacity={0.28} />
@@ -45,7 +62,7 @@ export function HistoryChart() {
             stroke="var(--color-fg-3)"
             tickLine={false}
             axisLine={{ stroke: "var(--color-line-2)" }}
-            interval={1}
+            interval={chartData.length > 8 ? 1 : 0}
           />
           <YAxis
             domain={[0, 100]}

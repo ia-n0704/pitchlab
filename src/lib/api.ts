@@ -7,6 +7,26 @@
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
+// ── Token helpers (client-only) ─────────────────────────────────────────────
+const TOKEN_KEY = "pitchlab_token";
+
+export function saveToken(token: string): void {
+  if (typeof window !== "undefined") localStorage.setItem(TOKEN_KEY, token);
+}
+export function loadToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+export function clearToken(): void {
+  if (typeof window !== "undefined") localStorage.removeItem(TOKEN_KEY);
+}
+
+/** Returns auth headers if a token exists, empty object otherwise. */
+function authHeaders(): Record<string, string> {
+  const token = loadToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export type AnalysisStatus =
   | "queued"
   | "processing"
@@ -59,20 +79,72 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+// ── Auth ────────────────────────────────────────────────────────────────────
+
+export type AuthResponse = {
+  access_token: string;
+  token_type: string;
+  email: string;
+  handedness: "RH" | "LH";
+};
+
+export async function login(email: string, password: string): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await jsonOrThrow<AuthResponse>(res);
+  saveToken(data.access_token);
+  return data;
+}
+
+export async function signup(payload: {
+  email: string;
+  password: string;
+  date_of_birth: string; // "YYYY-MM-DD"
+  handedness: "RH" | "LH";
+  consent_age: boolean;
+  consent_processing: boolean;
+  consent_analytics?: boolean;
+  consent_share?: boolean;
+}): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await jsonOrThrow<AuthResponse>(res);
+  saveToken(data.access_token);
+  return data;
+}
+
+// ── Analyses ─────────────────────────────────────────────────────────────────
+
 export async function uploadVideo(file: File): Promise<UploadResponse> {
   const fd = new FormData();
   fd.append("file", file);
-  const res = await fetch(`${API_BASE}/uploads`, { method: "POST", body: fd });
+  const res = await fetch(`${API_BASE}/uploads`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: fd,
+  });
   return jsonOrThrow<UploadResponse>(res);
 }
 
 export async function getAnalysis(id: string): Promise<AnalysisDetail> {
-  const res = await fetch(`${API_BASE}/analyses/${id}`, { cache: "no-store" });
+  const res = await fetch(`${API_BASE}/analyses/${id}`, {
+    cache: "no-store",
+    headers: authHeaders(),
+  });
   return jsonOrThrow<AnalysisDetail>(res);
 }
 
 export async function listRecentAnalyses(): Promise<AnalysisSummary[]> {
-  const res = await fetch(`${API_BASE}/analyses?limit=14`, { cache: "no-store" });
+  const res = await fetch(`${API_BASE}/analyses?limit=14`, {
+    cache: "no-store",
+    headers: authHeaders(),
+  });
   return jsonOrThrow<AnalysisSummary[]>(res);
 }
 

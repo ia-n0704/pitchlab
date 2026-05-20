@@ -11,8 +11,9 @@ import { MetricCard } from "@/components/MetricCard";
 import { AnimatedSkeleton } from "@/components/AnimatedSkeleton";
 import { HistoryChart } from "@/components/HistoryChart";
 import { UPPER_METRICS, LOWER_METRICS, CHAIN_SEGMENTS, LEAKS, DRILLS, type Metric } from "@/data/metrics";
-import { getAnalysis, type AnalysisDetail } from "@/lib/api";
+import { getAnalysis, listRecentAnalyses, type AnalysisDetail } from "@/lib/api";
 import { metricsFromApi } from "@/lib/adapt";
+import type { HistoryPoint } from "@/components/HistoryChart";
 
 type ChainSeg = { id: string; pct: number; state: "ok" | "warn" | "bad"; delta: string };
 
@@ -23,6 +24,23 @@ export function DashboardView() {
   const [detail, setDetail] = useState<AnalysisDetail | null>(null);
   const [polling, setPolling] = useState<boolean>(false);
   const [err, setErr] = useState<string | null>(null);
+  const [historyData, setHistoryData] = useState<HistoryPoint[]>([]);
+
+  // Load analysis history for the chart
+  useEffect(() => {
+    listRecentAnalyses()
+      .then((list) => {
+        const pts: HistoryPoint[] = list
+          .filter((a) => a.status === "completed" && a.kinetic_score !== null)
+          .reverse()
+          .map((a, i) => ({
+            session: `#${String(i + 1).padStart(2, "0")}`,
+            score: a.kinetic_score ?? 0,
+          }));
+        if (pts.length > 0) setHistoryData(pts);
+      })
+      .catch(() => {/* backend down — fall back to mock */});
+  }, []);
 
   // Poll API when we have an id
   useEffect(() => {
@@ -399,14 +417,27 @@ export function DashboardView() {
             padding: 24,
           }}
         >
-          <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-            <div className="eyebrow">STAGE 05 · KINETICSCORE 14-SESSION HISTORY · RECHARTS</div>
-            <div className="flex gap-2">
-              <Chip>14 SESSIONS</Chip>
-              <Chip variant="acc">+23 vs FIRST</Chip>
-            </div>
-          </div>
-          <HistoryChart />
+          {(() => {
+            const realData = historyData.length > 0;
+            const sessions = realData ? historyData.length : 14;
+            const delta = realData && historyData.length >= 2
+              ? historyData[historyData.length - 1].score - historyData[0].score
+              : 23;
+            return (
+              <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                <div className="eyebrow">
+                  STAGE 05 · KINETICSCORE {sessions}-SESSION HISTORY · RECHARTS
+                </div>
+                <div className="flex gap-2">
+                  <Chip>{sessions} SESSIONS{realData ? " · REAL" : " · DEMO"}</Chip>
+                  <Chip variant="acc">
+                    {delta >= 0 ? "+" : ""}{delta} vs FIRST
+                  </Chip>
+                </div>
+              </div>
+            );
+          })()}
+          <HistoryChart data={historyData.length > 0 ? historyData : undefined} />
         </div>
       </section>
 

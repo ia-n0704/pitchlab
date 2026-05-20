@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_session
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class SignupRequest(BaseModel):
-    email: EmailStr
+    email: str
     password: str = Field(min_length=8)
     date_of_birth: date
     handedness: Literal["RH", "LH"] = "RH"
@@ -27,14 +27,14 @@ class SignupRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str
     password: str
 
 
 class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    email: EmailStr
+    email: str
     handedness: Literal["RH", "LH"]
 
 
