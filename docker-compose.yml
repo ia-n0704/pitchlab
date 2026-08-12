@@ -35,9 +35,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       STORAGE_BACKEND: local
       LOCAL_UPLOADS_DIR: /app/uploads
-      CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+      CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3300,http://127.0.0.1:3300"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-5}
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-6}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
     volumes:
       - uploads:/app/uploads
@@ -46,7 +46,7 @@ services:
 
   worker:
     build: ./backend
-    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=1
+    command: celery -A app.worker.celery_app worker --beat --loglevel=info --concurrency=1
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -56,10 +56,19 @@ services:
       STORAGE_BACKEND: local
       LOCAL_UPLOADS_DIR: /app/uploads
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-5}
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-6}
+      POSE_BACKEND: ${POSE_BACKEND:-hq}
+      VITPOSE_MODEL: ${VITPOSE_MODEL:-usyd-community/vitpose-plus-large}
+      VITPOSE_DETECT_EVERY: ${VITPOSE_DETECT_EVERY:-4}
+      POSE_DEVICE: ${POSE_DEVICE:-}
+      # Xet-backed downloads fail inside this container — force plain HTTP
+      HF_HUB_DISABLE_XET: "1"
     volumes:
       - uploads:/app/uploads
+      # HF model weights (~1.4GB) survive container rebuilds
+      - hf_cache:/root/.cache/huggingface
 
 volumes:
   pgdata:
   uploads:
+  hf_cache:

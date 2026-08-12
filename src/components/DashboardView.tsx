@@ -9,10 +9,12 @@ import { Button } from "@/components/Button";
 import { ScoreGauge } from "@/components/ScoreGauge";
 import { MetricCard } from "@/components/MetricCard";
 import { AnimatedSkeleton } from "@/components/AnimatedSkeleton";
+import { PoseSkeleton } from "@/components/PoseSkeleton";
 import { HistoryChart } from "@/components/HistoryChart";
 import { UPPER_METRICS, LOWER_METRICS, CHAIN_SEGMENTS, LEAKS, DRILLS, type Metric } from "@/data/metrics";
 import { getAnalysis, listRecentAnalyses, type AnalysisDetail } from "@/lib/api";
-import { metricsFromApi } from "@/lib/adapt";
+import { isLocalId, loadLocalAnalysis } from "@/lib/analysis/localStore";
+import { metricsFromApi, type Drill, type Leak } from "@/lib/adapt";
 import type { HistoryPoint } from "@/components/HistoryChart";
 
 type ChainSeg = { id: string; pct: number; state: "ok" | "warn" | "bad"; delta: string };
@@ -45,6 +47,15 @@ export function DashboardView() {
   // Poll API when we have an id
   useEffect(() => {
     if (!id) return;
+
+    // Locally-analyzed (in-browser) report — read it from sessionStorage, no polling.
+    if (isLocalId(id)) {
+      const local = loadLocalAnalysis(id);
+      if (local) setDetail(local);
+      else setErr("로컬 분석 결과를 찾을 수 없습니다. 영상을 다시 업로드해 주세요.");
+      return;
+    }
+
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -80,6 +91,8 @@ export function DashboardView() {
   const upperMetrics: Metric[] = adapted?.upper ?? UPPER_METRICS;
   const lowerMetrics: Metric[] = adapted?.lower ?? LOWER_METRICS;
   const chain: ChainSeg[] = adapted?.chain.length ? adapted.chain : (CHAIN_SEGMENTS as readonly ChainSeg[] as ChainSeg[]);
+  const drills: Drill[] = adapted?.drills.length ? adapted.drills : (DRILLS as readonly Drill[] as Drill[]);
+  const leaks: Leak[] = adapted?.leaks.length ? adapted.leaks : (LEAKS as readonly Leak[] as Leak[]);
   const score = adapted?.kineticScore ?? 78;
   const comment =
     adapted?.comment ||
@@ -186,7 +199,11 @@ export function DashboardView() {
           className="px-[clamp(20px,4vw,56px)] py-6"
           style={{ borderRight: "1px solid var(--color-line)" }}
         >
-          <AnimatedSkeleton />
+          {adapted?.skeleton ? (
+            <PoseSkeleton skeleton={adapted.skeleton} handedness={adapted.handedness} />
+          ) : (
+            <AnimatedSkeleton />
+          )}
         </div>
 
         <div className="p-7 pl-7" style={{ background: "var(--color-bg-1)" }}>
@@ -338,7 +355,7 @@ export function DashboardView() {
           </div>
 
           <div className="mt-4.5 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
-            {LEAKS.map((leak, i) => {
+            {leaks.map((leak, i) => {
               const colorMap = { ok: "var(--color-acc)", bad: "var(--color-danger)", warn: "var(--color-warn)" };
               const color = colorMap[leak.state];
               return (
@@ -366,7 +383,7 @@ export function DashboardView() {
           </div>
 
           <div className="flex flex-col gap-3">
-            {DRILLS.map((d) => (
+            {drills.map((d) => (
               <div
                 key={d.id}
                 style={{

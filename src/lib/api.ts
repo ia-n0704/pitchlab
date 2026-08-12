@@ -4,6 +4,10 @@
  * (or the server is down) so the app remains demoable without docker-compose.
  */
 
+import { demoLogin, demoRegister, demoResend, demoVerify, NotVerifiedError } from "./demoAuth";
+
+export { NotVerifiedError };
+
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -88,17 +92,21 @@ export type AuthResponse = {
   handedness: "RH" | "LH";
 };
 
-export async function login(email: string, password: string): Promise<AuthResponse> {
-  const res = await fetch(`${API_BASE}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  const data = await jsonOrThrow<AuthResponse>(res);
-  saveToken(data.access_token);
-  return data;
+/** Result of starting signup — verification is always required before login. */
+export type SignupResult = {
+  email: string;
+  verificationRequired: boolean;
+  /** Present only in dev/demo (no SMTP) so the code can be shown on screen. */
+  devCode?: string;
+};
+
+/** A thrown fetch (vs. an HTTP error response) means the backend is unreachable. */
+function isNetworkError(err: unknown): boolean {
+  return err instanceof TypeError;
 }
 
+/** Start signup: creates an unverified account and triggers the verification code.
+ *  Does NOT log the user in — they must verify first. */
 export async function signup(payload: {
   email: string;
   password: string;
@@ -108,12 +116,85 @@ export async function signup(payload: {
   consent_processing: boolean;
   consent_analytics?: boolean;
   consent_share?: boolean;
-}): Promise<AuthResponse> {
-  const res = await fetch(`${API_BASE}/auth/signup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+}): Promise<SignupResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    if (isNetworkError(err)) {
+      console.info("[PitchLab] 백엔드 미연결 — 로컬 데모 계정으로 가입합니다.");
+      return demoRegister(payload);
+    }
+    throw err;
+  }
+  const data = await jsonOrThrow<{ email: string; verification_required: boolean; dev_code: string | null }>(res);
+  return { email: data.email, verificationRequired: data.verification_required, devCode: data.dev_code ?? undefined };
+}
+
+/** Confirm the emailed code → marks the account verified and issues a token. */
+export async function verifyEmail(email: string, code: string): Promise<AuthResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/auth/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, code }),
+    });
+  } catch (err) {
+    if (isNetworkError(err)) {
+      const data = demoVerify(email, code);
+      saveToken(data.access_token);
+      return data;
+    }
+    throw err;
+  }
+  const data = await jsonOrThrow<AuthResponse>(res);
+  saveToken(data.access_token);
+  return data;
+}
+
+/** Re-issue a verification code for an unverified account. */
+export async function resendCode(email: string): Promise<SignupResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/auth/resend`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+  } catch (err) {
+    if (isNetworkError(err)) return demoResend(email);
+    throw err;
+  }
+  const data = await jsonOrThrow<{ email: string; verification_required: boolean; dev_code: string | null }>(res);
+  return { email: data.email, verificationRequired: data.verification_required, devCode: data.dev_code ?? undefined };
+}
+
+export async function login(email: string, password: string): Promise<AuthResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch (err) {
+    if (isNetworkError(err)) {
+      console.info("[PitchLab] 백엔드 미연결 — 로컬 데모 계정으로 로그인합니다.");
+      const data = demoLogin(email, password); // throws if not registered / wrong pw / unverified
+      saveToken(data.access_token);
+      return data;
+    }
+    throw err;
+  }
+  // Backend reached: 403 means the account exists but isn't verified yet.
+  if (res.status === 403) {
+    throw new NotVerifiedError(email);
+  }
   const data = await jsonOrThrow<AuthResponse>(res);
   saveToken(data.access_token);
   return data;
@@ -170,5 +251,20 @@ export async function isBackendUp(): Promise<boolean> {
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+/** Validate the stored token against the backend.
+ *  "valid"   → real, live session.
+ *  "invalid" → backend reachable but rejected the token (stale/demo/expired).
+ *  "offline" → backend unreachable; caller may accept a demo session. */
+export async function checkSession(): Promise<"valid" | "invalid" | "offline"> {
+  const token = loadToken();
+  if (!token) return "invalid";
+  try {
+    const res = await fetch(`${API_BASE}/auth/me`, { cache: "no-store", headers: authHeaders() });
+    return res.ok ? "valid" : "invalid";
+  } catch {
+    return "offline";
   }
 }

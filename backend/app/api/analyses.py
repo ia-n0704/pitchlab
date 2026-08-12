@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_required_user_id
 from app.db import get_session
 from app.models import Analysis, AnalysisStatus
 
@@ -40,8 +41,14 @@ class AnalysisDetail(BaseModel):
 
 
 @router.get("", response_model=list[AnalysisSummary])
-def list_recent(limit: int = 14, db: Session = Depends(get_session)) -> list[AnalysisSummary]:
-    rows = db.query(Analysis).order_by(desc(Analysis.created_at)).limit(limit).all()
+def list_recent(
+    limit: int = 14,
+    db: Session = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_required_user_id),
+) -> list[AnalysisSummary]:
+    # History is always scoped to the signed-in caller.
+    q = db.query(Analysis).filter(Analysis.user_id == user_id)
+    rows = q.order_by(desc(Analysis.created_at)).limit(limit).all()
     return [
         AnalysisSummary(
             id=r.id,
@@ -55,9 +62,15 @@ def list_recent(limit: int = 14, db: Session = Depends(get_session)) -> list[Ana
 
 
 @router.get("/{analysis_id}", response_model=AnalysisDetail)
-def get_one(analysis_id: uuid.UUID, db: Session = Depends(get_session)) -> AnalysisDetail:
+def get_one(
+    analysis_id: uuid.UUID,
+    db: Session = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_required_user_id),
+) -> AnalysisDetail:
     r = db.get(Analysis, analysis_id)
-    if r is None:
+    # Legacy anonymous rows (user_id NULL, created before login became mandatory)
+    # stay readable by any signed-in user; owned rows only by their owner.
+    if r is None or (r.user_id is not None and r.user_id != user_id):
         raise HTTPException(404, "분석 결과를 찾을 수 없습니다.")
     return AnalysisDetail(
         id=r.id,

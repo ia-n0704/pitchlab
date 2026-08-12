@@ -53,12 +53,37 @@ function toMetric(
   };
 }
 
+export type Drill = {
+  id: string;
+  title: string;
+  desc: string;
+  reps: string;
+  priority: string;
+  top: boolean;
+};
+
+export type Leak = { v: string; p: string; d: string; state: "ok" | "warn" | "bad" };
+
+/** Joint = [x, y, visibility], all normalized 0..1. One frame = 15 joints (see backend _SKELETON_LM). */
+export type Phase = { id: string; start: number; end: number };
+export type Skeleton = { fps: number; release_frame: number; frames: number[][][]; phases?: Phase[] };
+
+const STATE_LABEL: Record<"ok" | "warn" | "bad", string> = {
+  ok: "안정 출력",
+  warn: "전달 효율 주의",
+  bad: "에너지 누수 구간",
+};
+
 export function metricsFromApi(detail: AnalysisDetail): {
   upper: Metric[];
   lower: Metric[];
   kineticScore: number;
   comment: string;
   chain: Array<{ id: string; pct: number; state: "ok" | "warn" | "bad"; delta: string }>;
+  drills: Drill[];
+  leaks: Leak[];
+  skeleton: Skeleton | null;
+  handedness: "RH" | "LH";
 } | null {
   const src = detail.metrics as Record<string, unknown> | null;
   if (!src) return null;
@@ -76,11 +101,40 @@ export function metricsFromApi(detail: AnalysisDetail): {
       c.state === "ok" ? "+0 NORMAL" : c.state === "warn" ? `−${Math.round(95 - c.pct)} WATCH` : `−${Math.round(95 - c.pct)} LEAK`,
   }));
 
+  // Drills are computed deterministically on the backend and live inside metrics.
+  const drills = (Array.isArray(src["drills"]) ? (src["drills"] as Drill[]) : []).filter(
+    (d) => d && typeof d.title === "string",
+  );
+
+  // Energy leaks: surface the weakest chain segments first.
+  const leaks: Leak[] = [...chain]
+    .sort((a, b) => a.pct - b.pct)
+    .slice(0, 5)
+    .map((seg) => ({
+      v: `${seg.pct}%`,
+      p: seg.id,
+      d: STATE_LABEL[seg.state],
+      state: seg.state,
+    }));
+
+  // Real keypoint overlay track (anonymized). null → UI falls back to the demo animation.
+  const rawSkeleton = src["skeleton"] as Skeleton | undefined;
+  const skeleton =
+    rawSkeleton && Array.isArray(rawSkeleton.frames) && rawSkeleton.frames.length > 0
+      ? rawSkeleton
+      : null;
+
+  const handedness = src["handedness"] === "LH" ? "LH" : "RH";
+
   return {
     upper,
     lower,
     kineticScore: detail.kinetic_score ?? 0,
     comment: detail.llm_comment ?? "",
     chain,
+    drills,
+    leaks,
+    skeleton,
+    handedness,
   };
 }

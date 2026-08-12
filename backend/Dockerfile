@@ -17,7 +17,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# torch first from the CPU wheel index — the default PyPI wheel drags in the
+# multi-GB CUDA stack, which is useless in this CPU container. GPU deployments
+# should swap the index for the matching CUDA one.
+RUN pip install --upgrade pip \
+    && pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu \
+    && pip install -r requirements.txt
 
 COPY app ./app
 

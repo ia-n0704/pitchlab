@@ -35,7 +35,8 @@ def inspect(video_path: Path) -> QualityReport:
     issues: list[str] = []
     if fps < 55:
         issues.append(f"프레임레이트 {fps:.0f}fps · 60fps 이상 필요")
-    if height < 700 and width < 700:
+    # 720p in either orientation: the short edge must reach 720 (allow a small tolerance).
+    if min(width, height) < 700:
         issues.append(f"해상도 {width}×{height} · 720p 이상 필요")
     if frames < 30:
         issues.append("영상 길이가 너무 짧습니다 (≥ 30 프레임 필요).")

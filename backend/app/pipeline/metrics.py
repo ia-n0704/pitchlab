@@ -45,22 +45,33 @@ def _smooth(x: np.ndarray, k: int = 5) -> np.ndarray:
 
 
 # ─────────────────────────────────────────────────────────────
-# Handedness detection: whichever wrist sweeps further is the throwing arm
+# Handedness detection: whichever wrist sweeps further is the throwing arm.
+# Uses 2D image_xy (weighted by visibility) — monocular world_xyz depth is
+# unreliable on side-view / occluded footage and would flip the throwing arm.
 # ─────────────────────────────────────────────────────────────
+def _wrist_travel_2d(frames: list[PoseFrame], key: str) -> float:
+    lm = LM[key]
+    pts = np.array([f.image_xy[lm] for f in frames])
+    vis = np.array([f.visibility[lm] for f in frames])
+    good = pts[vis > 0.3]
+    if len(good) < 2:
+        return 0.0
+    # total path length is more robust than bbox range against a single outlier
+    return float(np.sum(np.linalg.norm(np.diff(good, axis=0), axis=1)))
+
+
 def detect_handedness(frames: list[PoseFrame]) -> str:
-    rw = np.array([f.world_xyz[LM["right_wrist"]] for f in frames])
-    lw = np.array([f.world_xyz[LM["left_wrist"]] for f in frames])
-    r_range = np.linalg.norm(rw.max(axis=0) - rw.min(axis=0))
-    l_range = np.linalg.norm(lw.max(axis=0) - lw.min(axis=0))
-    return "RH" if r_range >= l_range else "LH"
+    r = _wrist_travel_2d(frames, "right_wrist")
+    l = _wrist_travel_2d(frames, "left_wrist")
+    return "RH" if r >= l else "LH"
 
 
 # ─────────────────────────────────────────────────────────────
-# Release-frame detection: wrist forward velocity peaks at release
+# Release-frame detection: throwing-wrist 2D speed peaks at release.
 # ─────────────────────────────────────────────────────────────
 def detect_release_frame(frames: list[PoseFrame], throwing_side: str) -> int:
     key = "right_wrist" if throwing_side == "RH" else "left_wrist"
-    pts = np.array([f.world_xyz[LM[key]] for f in frames])
+    pts = np.array([f.image_xy[LM[key]] for f in frames])
     if len(pts) < 3:
         return len(pts) - 1
     vel = np.linalg.norm(np.diff(pts, axis=0), axis=1)
@@ -221,16 +232,75 @@ def compute_metrics(frames: list[PoseFrame], fps: float) -> dict:
 
     metrics["kinetic_score"] = _kinetic_score(metrics)
     metrics["chain_efficiency"] = _chain_efficiency(metrics)
+    metrics["skeleton"] = _build_skeleton(frames, fps, rel_idx)
     return metrics
 
 
-def _wrap(value: float, lo: float, hi: float, unit: str, ko: str) -> dict:
+# ─────────────────────────────────────────────────────────────
+# Skeleton overlay payload (anonymised keypoints only — planning §8)
+# ─────────────────────────────────────────────────────────────
+# Body joints we render, in a fixed order the frontend mirrors.
+_SKELETON_LM = [
+    LM["nose"],
+    LM["left_shoulder"], LM["right_shoulder"],
+    LM["left_elbow"], LM["right_elbow"],
+    LM["left_wrist"], LM["right_wrist"],
+    LM["left_hip"], LM["right_hip"],
+    LM["left_knee"], LM["right_knee"],
+    LM["left_ankle"], LM["right_ankle"],
+    LM["left_foot"], LM["right_foot"],
+]
+
+
+def _build_skeleton(frames: list[PoseFrame], fps: float, rel_idx: int, max_frames: int = 90) -> dict:
+    """Downsample the 2D pose track into a compact, view-fitted overlay payload.
+
+    Stores only normalized keypoint coordinates + visibility — no imagery — so it
+    satisfies the "익명 키포인트만 보관" policy. Coordinates are scaled into the unit
+    square with aspect preserved, so the frontend can draw it in any viewBox.
+    """
+    n = len(frames)
+    step = max(1, math.ceil(n / max_frames))
+    idxs = list(range(0, n, step))
+    sub = [frames[i] for i in idxs]
+
+    pts = np.array([[f.image_xy[lm] for lm in _SKELETON_LM] for f in sub], dtype=np.float64)  # (F, J, 2)
+    flat = pts.reshape(-1, 2)
+    min_xy = flat.min(axis=0)
+    span = np.maximum(flat.max(axis=0) - min_xy, 1e-3)
+    scale = float(max(span[0], span[1]))
+    off = ((scale - span) / 2.0) / scale  # center the shorter axis
+
+    out_frames: list[list[list[float]]] = []
+    for fi, f in enumerate(sub):
+        joints: list[list[float]] = []
+        for ji, lm in enumerate(_SKELETON_LM):
+            x = (pts[fi, ji, 0] - min_xy[0]) / scale + off[0]
+            y = (pts[fi, ji, 1] - min_xy[1]) / scale + off[1]
+            v = float(f.visibility[lm])
+            joints.append([round(float(x), 4), round(float(y), 4), round(v, 2)])
+        out_frames.append(joints)
+
+    # map the release frame onto the downsampled timeline
+    ds_rel = min(len(out_frames) - 1, max(0, round(rel_idx / step)))
+
     return {
-        "value": round(float(value), 2),
+        "fps": round(fps / step, 2),
+        "release_frame": ds_rel,
+        "frames": out_frames,
+    }
+
+
+def _wrap(value: float, lo: float, hi: float, unit: str, ko: str) -> dict:
+    # numpy scalars sneak in via world_xyz arithmetic; a numpy comparison yields
+    # np.bool_, which JSONB serialization rejects — coerce to native types first.
+    value = float(value)
+    return {
+        "value": round(value, 2),
         "unit": unit,
         "norm_min": lo,
         "norm_max": hi,
-        "ok": _band(value, lo, hi),
+        "ok": bool(_band(value, lo, hi)),
         "ko": ko,
     }
 

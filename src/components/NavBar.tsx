@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
 import { Chip } from "./Chip";
 import { ButtonLink } from "./Button";
+import { AnalyzeStartLink } from "./AnalyzeStartLink";
 
 type NavItem = { href: string; label: string; section?: string };
 
@@ -128,9 +129,9 @@ export function NavBar({ mode = "public" }: { mode?: "public" | "app" }) {
             <ButtonLink href="/auth#login" variant="ghost" size="sm">
               로그인
             </ButtonLink>
-            <ButtonLink href="/upload" variant="primary" size="sm">
+            <AnalyzeStartLink variant="primary" size="sm">
               분석 시작
-            </ButtonLink>
+            </AnalyzeStartLink>
           </>
         ) : (
           <>

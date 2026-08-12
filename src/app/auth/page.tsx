@@ -7,10 +7,13 @@ import { Logo } from "@/components/Logo";
 import { Chip } from "@/components/Chip";
 import { Button } from "@/components/Button";
 import { PitcherFigure } from "@/components/PitcherFigure";
-import { login, signup } from "@/lib/api";
+import { login, signup, verifyEmail, resendCode, NotVerifiedError } from "@/lib/api";
+
+type VerifyState = { email: string; devCode?: string; dest: string };
 
 export default function AuthPage() {
   const [mode, setMode] = useState<"signup" | "login">("signup");
+  const [verify, setVerify] = useState<VerifyState | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -58,13 +61,23 @@ export default function AuthPage() {
         style={{ padding: "48px clamp(24px, 6vw, 80px)" }}
       >
         <span className="crosshair" style={{ top: 24, right: 24 }} />
-        {mode === "signup" ? <SignupForm onSwitch={() => setMode("login")} onSubmit={() => router.push("/upload")} /> : <LoginForm onSwitch={() => setMode("signup")} onSubmit={() => router.push("/dashboard")} />}
+        {verify ? (
+          <VerifyPanel
+            state={verify}
+            onVerified={() => router.push(verify.dest)}
+            onBack={() => setVerify(null)}
+          />
+        ) : mode === "signup" ? (
+          <SignupForm onSwitch={() => setMode("login")} onNeedVerify={setVerify} />
+        ) : (
+          <LoginForm onSwitch={() => setMode("signup")} onSubmit={() => router.push("/dashboard")} onNeedVerify={setVerify} />
+        )}
       </section>
     </div>
   );
 }
 
-function SignupForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: () => void }) {
+function SignupForm({ onSwitch, onNeedVerify }: { onSwitch: () => void; onNeedVerify: (v: VerifyState) => void }) {
   const [hand, setHand] = useState<"RH" | "LH">("RH");
   const [consentAge, setConsentAge] = useState(true);
   const [consentProc, setConsentProc] = useState(true);
@@ -86,7 +99,7 @@ function SignupForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: ()
 
     setLoading(true);
     try {
-      await signup({
+      const res = await signup({
         email, password,
         date_of_birth: dob,
         handedness: hand,
@@ -95,7 +108,8 @@ function SignupForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: ()
         consent_analytics: consentAnaly,
         consent_share: consentShare,
       });
-      onSubmit();
+      // Don't log in yet — go verify the emailed code first.
+      onNeedVerify({ email: res.email, devCode: res.devCode, dest: "/upload" });
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "가입 실패");
     } finally {
@@ -190,7 +204,7 @@ function SignupForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: ()
         </div>
 
         <Button variant="primary" size="lg" full type="submit" style={{ marginTop: 8 }} disabled={loading}>
-          {loading ? "가입 중…" : "가입 후 촬영 가이드로 이동 →"}
+          {loading ? "인증 코드 발송 중…" : "이메일 인증 코드 받기 →"}
         </Button>
 
         <p
@@ -206,7 +220,7 @@ function SignupForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: ()
   );
 }
 
-function LoginForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: () => void }) {
+function LoginForm({ onSwitch, onSubmit, onNeedVerify }: { onSwitch: () => void; onSubmit: () => void; onNeedVerify: (v: VerifyState) => void }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -221,7 +235,18 @@ function LoginForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: () 
       await login(email, password);
       onSubmit();
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : "로그인 실패");
+      if (ex instanceof NotVerifiedError) {
+        // Account exists but isn't verified — re-issue a code and route to verification.
+        try {
+          const res = await resendCode(ex.email);
+          onNeedVerify({ email: ex.email, devCode: res.devCode, dest: "/dashboard" });
+          return;
+        } catch {
+          setErr("이메일 인증이 필요합니다. 인증 코드 재발송에 실패했습니다.");
+        }
+      } else {
+        setErr(ex instanceof Error ? ex.message : "로그인 실패");
+      }
     } finally {
       setLoading(false);
     }
@@ -344,6 +369,127 @@ function LoginForm({ onSwitch, onSubmit }: { onSwitch: () => void; onSubmit: () 
           로그인하면 <a href="#" style={{ color: "var(--color-fg-2)" }}>이용약관</a> 및{" "}
           <a href="#" style={{ color: "var(--color-fg-2)" }}>개인정보처리방침</a>에 동의하는 것으로 간주됩니다.
         </p>
+      </form>
+    </div>
+  );
+}
+
+function VerifyPanel({
+  state,
+  onVerified,
+  onBack,
+}: {
+  state: VerifyState;
+  onVerified: () => void;
+  onBack: () => void;
+}) {
+  const [code, setCode] = useState("");
+  const [devCode, setDevCode] = useState<string | undefined>(state.devCode);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [resent, setResent] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setErr(null);
+    setLoading(true);
+    try {
+      await verifyEmail(state.email, code);
+      onVerified();
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "인증 실패");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setErr(null);
+    setResent(false);
+    try {
+      const res = await resendCode(state.email);
+      setDevCode(res.devCode);
+      setResent(true);
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "재발송 실패");
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 420 }}>
+      <div
+        className="flex justify-between items-center mono mb-9 flex-wrap gap-2"
+        style={{ fontSize: 11, color: "var(--color-fg-3)", letterSpacing: "0.16em" }}
+      >
+        <span>STEP 03 / 03 · 이메일 인증</span>
+        <Link href="#" style={{ color: "var(--color-acc)" }} onClick={(e) => { e.preventDefault(); onBack(); }}>
+          ← 돌아가기
+        </Link>
+      </div>
+
+      <h1 style={{ fontSize: "clamp(32px, 4.5vw, 42px)", lineHeight: 1.05, letterSpacing: "-0.03em", marginBottom: 12 }}>
+        이메일을<br />확인해 주세요.
+      </h1>
+      <p style={{ color: "var(--color-fg-2)", fontSize: 14, margin: "0 0 28px" }}>
+        <span style={{ color: "var(--color-acc)" }}>{state.email}</span> 으로 보낸 6자리 인증 코드를 입력하세요.
+      </p>
+
+      {devCode && (
+        <div
+          className="mono mb-5"
+          style={{
+            fontSize: 12, color: "var(--color-acc)", letterSpacing: "0.06em",
+            padding: "12px 14px", border: "1px dashed var(--color-acc)",
+            background: "var(--color-acc-soft)", borderRadius: "var(--radius-pl-sm)",
+            lineHeight: 1.5,
+          }}
+        >
+          데모 환경(메일 서버 미연결): 인증 코드는 <b style={{ fontSize: 15 }}>{devCode}</b>
+          {resent && <span style={{ color: "var(--color-fg-2)" }}> · 재발송됨</span>}
+        </div>
+      )}
+
+      {err && (
+        <div
+          className="mono mb-5"
+          style={{
+            fontSize: 11.5, color: "var(--color-danger)", letterSpacing: "0.08em",
+            padding: "10px 14px", border: "1px solid var(--color-danger)",
+            background: "var(--color-bg-1)", borderRadius: "var(--radius-pl-sm)",
+          }}
+        >
+          {err}
+        </div>
+      )}
+
+      <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+        <div>
+          <Label htmlFor="vcode">인증 코드</Label>
+          <Input
+            id="vcode"
+            name="code"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="6자리 숫자"
+            inputMode="numeric"
+            maxLength={6}
+            required
+            style={{ letterSpacing: "0.4em", fontFamily: "var(--font-mono)", fontSize: 18 }}
+          />
+        </div>
+
+        <Button variant="primary" size="lg" full type="submit" disabled={loading || code.length !== 6}>
+          {loading ? "인증 중…" : "인증하고 계속 →"}
+        </Button>
+
+        <button
+          type="button"
+          onClick={handleResend}
+          className="mono cursor-pointer"
+          style={{ fontSize: 11.5, color: "var(--color-fg-2)", background: "none", border: "none", letterSpacing: "0.08em" }}
+        >
+          코드를 받지 못하셨나요? <span style={{ color: "var(--color-acc)" }}>재발송</span>
+        </button>
       </form>
     </div>
   );

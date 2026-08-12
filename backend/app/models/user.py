@@ -19,4 +19,7 @@ class User(Base):
     date_of_birth: Mapped[date] = mapped_column(Date, nullable=False)
     consent_analytics: Mapped[bool] = mapped_column(Boolean, default=False)
     consent_share: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Email verification — accounts start unverified and cannot log in until confirmed.
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    verification_code: Mapped[str | None] = mapped_column(String(6), default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

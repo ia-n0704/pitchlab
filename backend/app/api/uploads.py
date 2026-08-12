@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_required_user_id
 from app.db import get_session
 from app.models import Analysis, AnalysisStatus
 from app.storage import get_storage
@@ -31,6 +32,7 @@ class UploadResponse(BaseModel):
 async def upload(
     file: UploadFile = File(...),
     db: Session = Depends(get_session),
+    user_id: uuid.UUID = Depends(get_required_user_id),  # 분석은 로그인 필수
 ) -> UploadResponse:
     if file.content_type not in ACCEPTED_TYPES:
         raise HTTPException(415, f"허용되지 않는 형식입니다: {file.content_type}")
@@ -55,6 +57,7 @@ async def upload(
 
         row = Analysis(
             id=analysis_id,
+            user_id=user_id,
             storage_key=storage_key,
             original_filename=file.filename or storage_key,
             status=AnalysisStatus.queued,

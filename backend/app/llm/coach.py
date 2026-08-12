@@ -67,7 +67,10 @@ def generate_coaching_comment(metrics: dict) -> str:
         return _fallback_comment(metrics)
 
     client = Anthropic(api_key=settings.anthropic_api_key)
-    payload = json.dumps(metrics, ensure_ascii=False, indent=2)
+    # Skeleton is a large keypoint track meant for the UI overlay — not useful to
+    # the LLM and would bloat the prompt, so drop it before serializing.
+    payload_metrics = {k: v for k, v in metrics.items() if k != "skeleton"}
+    payload = json.dumps(payload_metrics, ensure_ascii=False, indent=2)
 
     try:
         msg = client.messages.create(

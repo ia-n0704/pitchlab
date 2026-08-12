@@ -8,9 +8,15 @@ pydantic-settings==2.7.0
 python-multipart==0.0.20
 celery[redis]==5.4.0
 redis==5.2.1
-mediapipe==0.10.20
+# 0.10.18 is the newest release with linux/aarch64 wheels (Apple Silicon Docker)
+mediapipe==0.10.18
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
+scipy==1.14.1
+# HQ pose backend (ViTPose + RT-DETR). CPU wheels by default; use the CUDA
+# torch index in production for GPU workers.
+torch==2.6.0
+transformers==4.49.0
 boto3==1.35.92
 anthropic==0.40.0
 passlib[bcrypt]==1.7.4

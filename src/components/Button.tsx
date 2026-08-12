@@ -82,11 +82,13 @@ export function ButtonLink({
   size = "md",
   full,
   className,
-}: Common & { href: string }) {
+  onClick,
+}: Common & { href: string; onClick?: React.MouseEventHandler<HTMLAnchorElement> }) {
   return (
     <Link
       href={href}
       className={className}
+      onClick={onClick}
       style={getStyles({ children, variant, size, full })}
     >
       {children}

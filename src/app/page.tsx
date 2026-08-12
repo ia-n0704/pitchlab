@@ -2,6 +2,7 @@ import { NavBar } from "@/components/NavBar";
 import { Footer } from "@/components/Footer";
 import { Chip } from "@/components/Chip";
 import { ButtonLink } from "@/components/Button";
+import { AnalyzeStartLink } from "@/components/AnalyzeStartLink";
 import { SectionHead } from "@/components/SectionHead";
 import { PitcherFigure } from "@/components/PitcherFigure";
 
@@ -79,13 +80,13 @@ export default function Landing() {
             </p>
 
             <div className="flex gap-3 mb-16 flex-wrap">
-              <ButtonLink href="/auth" variant="primary" size="lg">
+              <AnalyzeStartLink variant="primary" size="lg">
                 무료로 분석 시작
                 <span className="mono" style={{ fontSize: 12, opacity: 0.7 }}>→</span>
-              </ButtonLink>
-              <ButtonLink href="/upload" variant="ghost" size="lg">
+              </AnalyzeStartLink>
+              <AnalyzeStartLink variant="ghost" size="lg">
                 촬영 가이드 보기
-              </ButtonLink>
+              </AnalyzeStartLink>
             </div>
 
             <div

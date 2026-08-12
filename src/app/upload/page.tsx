@@ -8,7 +8,10 @@ import { Footer } from "@/components/Footer";
 import { MedicalNotice } from "@/components/Footer";
 import { Button } from "@/components/Button";
 import { Chip } from "@/components/Chip";
-import { uploadVideo, isBackendUp } from "@/lib/api";
+import { uploadVideo, isBackendUp, clearToken } from "@/lib/api";
+import { analyzeVideoInBrowser } from "@/lib/analysis/runAnalysis";
+import { saveLocalAnalysis } from "@/lib/analysis/localStore";
+import { AuthGuard } from "@/components/AuthGuard";
 
 const RULES = [
   { k: "촬영 각도", v: "측면 · ±10°", d: "우완은 좌측면, 좌완은 우측면. 카메라가 투구판과 동일 평면 위에." },
@@ -47,16 +50,29 @@ export default function UploadPage() {
     const live = await isBackendUp();
 
     if (!live) {
-      // Demo mode — fake the upload + checks (used when docker-compose isn't running).
-      let pct = 0;
-      const upTick = setInterval(() => {
-        pct += 8;
-        if (pct >= 100) {
-          clearInterval(upTick);
-          simulateChecks();
-        }
-        setProgress((s) => ({ ...s, pct: Math.min(100, pct) }));
-      }, 90);
+      // No backend → analyze the user's video right here in the browser (real
+      // BlazePose pose estimation + the same biomechanics pipeline).
+      setChecks(["pending", "pending", "pending", "pending", "pending"]);
+      try {
+        const detail = await analyzeVideoInBrowser(file, (p) => {
+          setProgress({ pct: p.pct, label: p.phase, sub: p.detail ?? "", show: true });
+          setChecks((prev) =>
+            prev.map((v, idx) => (p.pct >= ((idx + 1) / CHECK_LABELS.length) * 100 ? "ok" : v)),
+          );
+        });
+        setChecks(["ok", "ok", "ok", "ok", "ok"]);
+        saveLocalAnalysis(detail);
+        setAnalysisId(detail.id);
+        setProgress({ pct: 100, label: "COMPLETE", sub: "브라우저 분석 완료 · 결과를 확인하세요.", show: true });
+        setCanAnalyze(true);
+      } catch (err) {
+        setProgress({
+          pct: 0,
+          label: "FAILED",
+          sub: err instanceof Error ? err.message : "분석 실패",
+          show: true,
+        });
+      }
       return;
     }
 
@@ -71,6 +87,12 @@ export default function UploadPage() {
       // run the visual quality-check timeline; the worker handles real validation in the background
       simulateChecks();
     } catch (err) {
+      // Session died mid-flow (expired/stale token) → back to login.
+      if (err instanceof Error && err.message.startsWith("401")) {
+        clearToken();
+        router.replace("/auth#login");
+        return;
+      }
       setProgress({
         pct: 0,
         label: "FAILED",
@@ -100,6 +122,7 @@ export default function UploadPage() {
     <>
       <NavBar mode="app" />
 
+      <AuthGuard>
       <main className="px-[clamp(20px,4vw,56px)] py-9 pb-16">
         <div
           className="flex items-center gap-3.5 mono mb-3.5"
@@ -431,6 +454,7 @@ export default function UploadPage() {
       </main>
 
       <MedicalNotice />
+      </AuthGuard>
       <Footer />
     </>
   );
